@@ -15,7 +15,7 @@ import json
 # .envファイルの読み込み
 load_dotenv()
 
-# Firebase Admin SDKの初期化
+
 # Firebase Admin SDKの初期化
 firebase_key_path = os.getenv("FIREBASE_KEY_PATH")
 cred = credentials.Certificate(firebase_key_path)

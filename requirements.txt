@@ -16,5 +16,5 @@ python-dotenv
 
 # gemini CLI
 httpx 
-json
+
 
