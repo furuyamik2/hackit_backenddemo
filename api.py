@@ -138,15 +138,17 @@ def join_room(request: JoinRoomRequest):
 
   
 @app.post("/update_room_settings")
-def update_room_settings(request: UpdateSettingsRequest):
+async def update_room_settings(request: UpdateSettingsRequest):
     try:
-        room_ref = db.collection('rooms').document(request.roomId)
-        
+
+        generated_agenda = await generate_agenda_for_topic(request.topic, request.duration)
         # データベースに議題、制限時間、そして「議論中」というステータスを保存
+        room_ref = db.collection('rooms').document(request.roomId)
         room_ref.update({
             'topic': request.topic,
             'duration': request.duration,
-            'status': 'discussing'  # この行が重要！
+            'status': 'discussing', 
+            'agenda': generated_agenda 
         })
         print(f"Room {request.roomId} status changed to 'discussing'")
         return {"message": "Settings updated and discussion started"}
@@ -154,8 +156,57 @@ def update_room_settings(request: UpdateSettingsRequest):
         print(f"Error updating room settings: {e}")
         raise HTTPException(status_code=500, detail="Failed to update settings")
     
-@app.post("/generate_agenda")
-async def generate_agenda(request: GenerateAgendaRequest):
+# この関数はupdate_room_settings内で使うヘルパー関数として移動または定義します
+async def generate_agenda_for_topic(topic: str, total_duration: int):
+    """Gemini AIを使って、議題に基づいた議論の段取りを生成する"""
+    API_KEY = os.getenv("GEMINI_API_KEY", "")
+    if not API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEYが設定されていません。")
+        
+    GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={API_KEY}" # モデル名を更新
+
+    prompt = textwrap.dedent(f"""
+        あなたは、創造的なアイデアを引き出し、議論を生産的な結論に導くことを得意とする、世界クラスのファシリテーターです。
+        与えられた議題と時間の中で、最高の成果を出せるような議論の段取りを設計してください。
+
+        # 議題
+        {topic}
+
+        # 全体の時間
+        {total_duration}分
+
+        # 指示
+        - 議論の基本的な流れである「発散（アイデアを広げる）」→「収束（アイデアをまとめる・決める）」を意識したステップを構成してください。
+        - 各ステップには、ステップ名(step_name)、参加者への問いかけ(prompt_question)、分単位の時間配分(allocated_time)を必ず含めてください。
+        - 時間配分の合計が、全体の時間 ({total_duration}分) と厳密に一致するようにしてください。
+        - 「参加者への問いかけ」は、具体的で、参加者が何をすべきか明確にわかるオープンクエスチョンにしてください。
+        - 最初のステップは、参加者の緊張をほぐし、自由に意見を言えるような雰囲気を作る問いかけから始めてください。
+        - 必ずJSON配列形式で、指示されたキーを持つオブジェクトのリストとして出力してください。
+    """)
+    
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+        }
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(GEMINI_URL, json=payload)
+            response.raise_for_status()
+            result = response.json()
+            # ... (エラーチェックはそのまま)
+            agenda_json_text = result["candidates"][0]["content"]["parts"][0]["text"]
+            agenda = json.loads(agenda_json_text)
+            return agenda
+    except Exception as e:
+        print(f"❌ AIによるアジェンダ生成エラー: {e}")
+        # 実際の運用では、ここで固定の代替アジェンダを返すなどのフォールバック処理を検討します
+        raise HTTPException(status_code=500, detail="AIによるアジェンダ生成に失敗しました。")
+    
+# @app.post("/generate_agenda")
+# async def generate_agenda(request: GenerateAgendaRequest):
     """Gemini AIを使って、議題に基づいた議論の段取りを生成する"""
     if not db:
         raise HTTPException(status_code=500, detail="Database connection is not available.")
