@@ -14,3 +14,7 @@ firebase-admin
 # 環境変数管理
 python-dotenv
 
+# gemini CLI
+httpx 
+json
+

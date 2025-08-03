@@ -10,6 +10,7 @@ import asyncio
 import os
 from dotenv import load_dotenv
 import httpx 
+import json
 
 # .envファイルの読み込み
 load_dotenv()
@@ -163,35 +164,35 @@ async def generate_agenda(request: GenerateAgendaRequest):
 
     # AIへの指示（プロンプト）
     prompt = f"""
-    あなたは議論を円滑に進める優秀なファシリテーターです。
-    以下の議題と全体の時間に基づいて、議論の段取りをステップ・バイ・ステップで提案してください。
+あなたは議論を円滑に進める優秀なファシリテーターです。
+以下の議題と全体の時間に基づいて、議論の段取りをステップ・バイ・ステップで提案してください。
 
-    # 議題
-    {request.topic}
+# 議題
+{request.topic}
 
-    # 全体の時間
-    {request.total_duration}分
+# 全体の時間
+{request.total_duration}分
 
-    # 出力形式のルール
-    - 必ずJSON形式で、ステップの配列として出力してください。
-    - 各ステップには `step_name` (ステップ名), `prompt_question` (参加者への問いかけ), `allocated_time` (分単位の時間配分) の3つのキーを含めてください。
-    - `allocated_time` の合計が、全体の時間 ({request.total_duration}分) と一致するように調整してください。
-    - `prompt_question` は、参加者が具体的なアクションを取りやすい、明確で分かりやすい問いかけにしてください。
+# 出力形式のルール
+- 必ずJSON形式で、ステップの配列として出力してください。
+- 各ステップには `step_name` (ステップ名), `prompt_question` (参加者への問いかけ), `allocated_time` (分単位の時間配分) の3つのキーを含めてください。
+- `allocated_time` の合計が、全体の時間 ({request.total_duration}分) と一致するように調整してください。
+- `prompt_question` は、参加者が具体的なアクションを取りやすい、明確で分かりやすい問いかけにしてください。
 
-    JSON出力例:
-    [
-    {{
-        "step_name": "アイデアの発散",
-        "prompt_question": "この議題について、まずは思いつくアイデアを自由に5つずつ挙げてください。",
-        "allocated_time": 10
-    }},
-    {{
-        "step_name": "アイデアの整理とグループ化",
-        "prompt_question": "出てきたアイデアを似ているもの同士でグループ分けし、それぞれに名前を付けてみましょう。",
-        "allocated_time": 15
-    }}
-    ]
-    """
+JSON出力例:
+[
+  {{
+    "step_name": "アイデアの発散",
+    "prompt_question": "この議題について、まずは思いつくアイデアを自由に5つずつ挙げてください。",
+    "allocated_time": 10
+  }},
+  {{
+    "step_name": "アイデアの整理とグループ化",
+    "prompt_question": "出てきたアイデアを似ているもの同士でグループ分けし、それぞれに名前を付けてみましょう。",
+    "allocated_time": 15
+  }}
+]
+"""
 
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
