@@ -148,7 +148,8 @@ async def update_room_settings(request: UpdateSettingsRequest):
             'topic': request.topic,
             'duration': request.duration,
             'status': 'discussing', 
-            'agenda': generated_agenda 
+            'agenda': generated_agenda,
+            'finished_users': {}
         })
         print(f"Room {request.roomId} status changed to 'discussing'")
         return {"message": "Settings updated and discussion started"}
