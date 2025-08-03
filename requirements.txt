@@ -10,3 +10,7 @@ python-socketio
 
 # Firebase連携
 firebase-admin
+
+# 環境変数管理
+python-dotenv
+
