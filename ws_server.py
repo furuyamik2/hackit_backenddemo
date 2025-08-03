@@ -134,3 +134,14 @@ async def handle_leave_room(sid, data):
 
     except Exception as e:
         print(f"❌ ルーム退出処理中にエラーが発生しました: {e}")
+
+sio.on('start_discussion')
+async def handle_start_discussion(sid, data):
+    room_id = data.get('roomId')
+    if not room_id:
+        return
+    
+    print(f"📢 議論開始の合図を受信。ルーム'{room_id}'の全員に通知します。")
+    
+    # ルームにいる全員に'discussion_started'イベントを送信
+    await sio.emit('discussion_started', {'roomId': room_id}, room=room_id)

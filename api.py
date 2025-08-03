@@ -44,6 +44,11 @@ class JoinRoomRequest(BaseModel):
     username: str
     uid: str
 
+class UpdateSettingsRequest(BaseModel):
+    roomId: str
+    topic: str
+    duration: int # 時間は数値として受け取る
+
 @app.post("/create_room")
 async def create_room(request: CreateRoomRequest):
     try:
@@ -123,3 +128,20 @@ def join_room(request: JoinRoomRequest):
     except Exception as e:
         print(f"Error joining room: {e}")
         raise HTTPException(status_code=500, detail="ルームへの参加に失敗しました。")
+
+  
+@app.post("/update_room_settings")
+def update_room_settings(request: UpdateSettingsRequest):
+    try:
+        room_ref = db.collection('rooms').document(request.roomId)
+        
+        # データベースに議題と制限時間を保存
+        room_ref.update({
+            'topic': request.topic,
+            'duration': request.duration
+        })
+        print(f"Room {request.roomId} settings updated: topic='{request.topic}', duration={request.duration}")
+        return {"message": "Settings updated successfully"}
+    except Exception as e:
+        print(f"Error updating room settings: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update settings")
