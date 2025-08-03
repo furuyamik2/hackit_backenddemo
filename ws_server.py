@@ -145,3 +145,29 @@ async def handle_start_discussion(sid, data):
     
     # ルームにいる全員に'discussion_started'イベントを送信
     await sio.emit('discussion_started', {'roomId': room_id}, room=room_id)
+
+@sio.on('join_discussion_room')
+async def handle_join_discussion_room(sid, data):
+    """議論ページのユーザーを、チャット用の部屋に参加させる"""
+    room_id = data.get('roomId')
+    if not room_id:
+        return
+    
+    discussion_room_name = f"discussion_{room_id}"
+    await sio.enter_room(sid, discussion_room_name)
+    print(f"✅ Client {sid} joined discussion room '{discussion_room_name}'")
+
+
+@sio.on('send_message')
+async def handle_send_message(sid, data):
+    """ユーザーからメッセージを受け取り、同じ部屋の全員に送信する"""
+    room_id = data.get('roomId')
+    message = data.get('message')
+    if not all([room_id, message]):
+        return
+    
+    discussion_room_name = f"discussion_{room_id}"
+    
+    # メッセージを、送信者以外の全員に送信する
+    await sio.emit('new_message', message, room=discussion_room_name, skip_sid=sid)
+    print(f"💬 Sent message to room '{discussion_room_name}'")
