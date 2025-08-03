@@ -11,6 +11,7 @@ import os
 from dotenv import load_dotenv
 import httpx 
 import json
+import textwrap
 
 # .envファイルの読み込み
 load_dotenv()
@@ -156,58 +157,76 @@ def update_room_settings(request: UpdateSettingsRequest):
 @app.post("/generate_agenda")
 async def generate_agenda(request: GenerateAgendaRequest):
     """Gemini AIを使って、議題に基づいた議論の段取りを生成する"""
-    
-    # Gemini APIのエンドポイントとキー（Renderの環境変数に設定することを推奨）
-    # キーが空文字列の場合、Canvas環境では自動的にキーが提供されます
-    API_KEY = os.getenv("GEMINI_API_KEY", "") 
+    if not db:
+        raise HTTPException(status_code=500, detail="Database connection is not available.")
+        
+    API_KEY = os.getenv("GEMINI_API_KEY", "")
+    if not API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEYが設定されていません。")
+        
     GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={API_KEY}"
 
-    # AIへの指示（プロンプト）
-    prompt = f"""
-あなたは議論を円滑に進める優秀なファシリテーターです。
-以下の議題と全体の時間に基づいて、議論の段取りをステップ・バイ・ステップで提案してください。
+    # ▼▼▼【変更点】AIへの役割と指示を、より具体的で高度なものに修正 ▼▼▼
+    prompt = textwrap.dedent(f"""
+        あなたは、創造的なアイデアを引き出し、議論を生産的な結論に導くことを得意とする、世界クラスのファシリテーターです。
+        与えられた議題と時間の中で、最高の成果を出せるような議論の段取りを設計してください。
 
-# 議題
-{request.topic}
+        # 議題
+        {request.topic}
 
-# 全体の時間
-{request.total_duration}分
+        # 全体の時間
+        {request.total_duration}分
 
-# 出力形式のルール
-- 必ずJSON形式で、ステップの配列として出力してください。
-- 各ステップには `step_name` (ステップ名), `prompt_question` (参加者への問いかけ), `allocated_time` (分単位の時間配分) の3つのキーを含めてください。
-- `allocated_time` の合計が、全体の時間 ({request.total_duration}分) と一致するように調整してください。
-- `prompt_question` は、参加者が具体的なアクションを取りやすい、明確で分かりやすい問いかけにしてください。
-
-JSON出力例:
-[
-  {{
-    "step_name": "アイデアの発散",
-    "prompt_question": "この議題について、まずは思いつくアイデアを自由に5つずつ挙げてください。",
-    "allocated_time": 10
-  }},
-  {{
-    "step_name": "アイデアの整理とグループ化",
-    "prompt_question": "出てきたアイデアを似ているもの同士でグループ分けし、それぞれに名前を付けてみましょう。",
-    "allocated_time": 15
-  }}
-]
-"""
+        # 指示
+        - 議論の基本的な流れである「発散（アイデアを広げる）」→「収束（アイデアをまとめる・決める）」を意識したステップを構成してください。
+        - 各ステップには、ステップ名、参加者への問いかけ、分単位の時間配分を含めてください。
+        - 時間配分の合計が、全体の時間 ({request.total_duration}分) と厳密に一致するようにしてください。
+        - 「参加者への問いかけ」は、具体的で、参加者が何をすべきか明確にわかるオープンクエスチョン（はい/いいえで終わらない質問）にしてください。
+        - 最初のステップは、参加者の緊張をほぐし、自由に意見を言えるような雰囲気を作る問いかけから始めてください。
+    """)
+    
+    # ▼▼▼【変更点】信頼性を高めるため、スキーマ（応答形式の設計図）を導入 ▼▼▼
+    agenda_schema = {
+        "type": "ARRAY",
+        "items": {
+            "type": "OBJECT",
+            "properties": {
+                "step_name": {"type": "STRING"},
+                "prompt_question": {"type": "STRING"},
+                "allocated_time": {"type": "INTEGER"}
+            },
+            "required": ["step_name", "prompt_question", "allocated_time"]
+        }
+    }
 
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
             "responseMimeType": "application/json",
+            "responseSchema": agenda_schema # スキーマを指定
         }
     }
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(GEMINI_URL, json=payload)
-            response.raise_for_status() # エラーがあれば例外を発生させる
+            response.raise_for_status()
             
             result = response.json()
-            agenda_json_text = result["candidates"][0]["content"]["parts"][0]["text"]
+            
+            # (安全なチェック処理はそのまま)
+            if "candidates" not in result or not result["candidates"]:
+                raise HTTPException(status_code=500, detail="AIからの応答がありませんでした。")
+
+            candidate = result["candidates"][0]
+            
+            if candidate.get("finishReason") == "SAFETY":
+                raise HTTPException(status_code=400, detail="議題が不適切と判断されたため、アジェンダを生成できませんでした。")
+            
+            if "content" not in candidate or "parts" not in candidate["content"]:
+                raise HTTPException(status_code=500, detail="AIからの応答形式が正しくありません。")
+
+            agenda_json_text = candidate["content"]["parts"][0]["text"]
             agenda = json.loads(agenda_json_text)
             
             print("✅ AIによるアジェンダ生成成功:", agenda)
@@ -216,6 +235,9 @@ JSON出力例:
     except httpx.HTTPStatusError as e:
         print(f"❌ Gemini API Error: {e.response.text}")
         raise HTTPException(status_code=500, detail="AIによるアジェンダ生成に失敗しました。")
+    except json.JSONDecodeError:
+        print(f"❌ JSON Decode Error: Failed to parse AI response: {agenda_json_text}")
+        raise HTTPException(status_code=500, detail="AIの応答を解析できませんでした。")
     except Exception as e:
         print(f"❌ An unexpected error occurred: {e}")
         raise HTTPException(status_code=500, detail="予期せぬエラーが発生しました。")
