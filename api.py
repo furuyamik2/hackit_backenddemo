@@ -135,13 +135,14 @@ def update_room_settings(request: UpdateSettingsRequest):
     try:
         room_ref = db.collection('rooms').document(request.roomId)
         
-        # データベースに議題と制限時間を保存
+        # データベースに議題、制限時間、そして「議論中」というステータスを保存
         room_ref.update({
             'topic': request.topic,
-            'duration': request.duration
+            'duration': request.duration,
+            'status': 'discussing'  # この行が重要！
         })
-        print(f"Room {request.roomId} settings updated: topic='{request.topic}', duration={request.duration}")
-        return {"message": "Settings updated successfully"}
+        print(f"Room {request.roomId} status changed to 'discussing'")
+        return {"message": "Settings updated and discussion started"}
     except Exception as e:
         print(f"Error updating room settings: {e}")
         raise HTTPException(status_code=500, detail="Failed to update settings")
