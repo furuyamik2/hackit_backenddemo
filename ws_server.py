@@ -185,27 +185,36 @@ async def handle_finish_step(sid, data):
     discussion_room_name = f"discussion_{room_id}"
 
     try:
-        # トランザクションを使って、完了者リストの更新と人数の取得を安全に行う
+        # ▼▼▼ トランザクションのロジックを全面的に書き換えます ▼▼▼
         @firestore.transactional
         def update_in_transaction(transaction, room_ref, user_uid):
             snapshot = room_ref.get(transaction=transaction)
             if not snapshot.exists:
                 return None
 
-            # 完了者リストに自分のUIDを追加
-            transaction.update(room_ref, {f'finished_users.{user_uid}': True})
+            room_data = snapshot.to_dict()
+
+            # 1. まず現在のデータをPythonの変数にコピーする
+            participants_map = room_data.get('participants', {})
+            finished_users_map = room_data.get('finished_users', {})
+
+            # 2. Pythonの変数上で、完了者に自分を追加する
+            finished_users_map[user_uid] = True
+
+            # 3. 更新されたPython変数を使って、最新の人数を計算する
+            participants_count = len(participants_map)
+            finished_count = len(finished_users_map)
             
-            # 更新後のデータを再度取得して、最新の人数を返す
-            snapshot_after = room_ref.get(transaction=transaction)
-            room_data = snapshot_after.to_dict()
-            participants_count = len(room_data.get('participants', {}))
-            finished_count = len(room_data.get('finished_users', {}))
+            # 4. 最後に、更新済みの完了者リストをデータベースに書き込む
+            transaction.update(room_ref, {'finished_users': finished_users_map})
             
+            # 5. 計算済みの人数を返す
             return {'finished_count': finished_count, 'total_participants': participants_count}
 
         result = await asyncio.to_thread(
             update_in_transaction, db.transaction(), room_ref, uid
         )
+        # ▲▲▲ ここまでが変更箇所 ▲▲▲
 
         if result:
             print(f"👍 Progress update for room '{room_id}': {result['finished_count']} / {result['total_participants']}")
