@@ -172,3 +172,60 @@ async def handle_send_message(sid, data):
     # skip_sid=sid が、この機能の核心です
     await sio.emit('new_message', message, room=discussion_room_name, skip_sid=sid)
     print(f"💬 Sent message to room '{discussion_room_name}' (excluding sender)")
+
+@sio.on('finish_step')
+async def handle_finish_step(sid, data):
+    """ユーザーがステップを完了したことを記録し、現在の進捗を全員に通知する"""
+    room_id = data.get('roomId')
+    uid = data.get('uid')
+    if not all([room_id, uid]):
+        return
+
+    room_ref = db.collection('rooms').document(room_id)
+    discussion_room_name = f"discussion_{room_id}"
+
+    try:
+        # トランザクションを使って、完了者リストの更新と人数の取得を安全に行う
+        @firestore.transactional
+        def update_in_transaction(transaction, room_ref, user_uid):
+            snapshot = room_ref.get(transaction=transaction)
+            if not snapshot.exists:
+                return None
+
+            # 完了者リストに自分のUIDを追加
+            transaction.update(room_ref, {f'finished_users.{user_uid}': True})
+            
+            # 更新後のデータを再度取得して、最新の人数を返す
+            snapshot_after = room_ref.get(transaction=transaction)
+            room_data = snapshot_after.to_dict()
+            participants_count = len(room_data.get('participants', {}))
+            finished_count = len(room_data.get('finished_users', {}))
+            
+            return {'finished_count': finished_count, 'total_participants': participants_count}
+
+        result = await asyncio.to_thread(
+            update_in_transaction, db.transaction(), room_ref, uid
+        )
+
+        if result:
+            print(f"👍 Progress update for room '{room_id}': {result['finished_count']} / {result['total_participants']}")
+            # 全員に進捗状況をブロードキャスト
+            await sio.emit('progress_update', result, room=discussion_room_name)
+
+    except Exception as e:
+        print(f"❌ Error in handle_finish_step: {e}")
+
+@sio.on('reset_progress_for_next_step')
+async def handle_reset_progress(sid, data):
+    """次のステップに進むために、完了者リストをリセットする"""
+    room_id = data.get('roomId')
+    if not room_id:
+        return
+    
+    try:
+        room_ref = db.collection('rooms').document(room_id)
+        # finished_users フィールドを空のマップで上書きしてリセット
+        await asyncio.to_thread(room_ref.update, {'finished_users': {}})
+        print(f"⏩ Progress reset for next step in room '{room_id}'")
+    except Exception as e:
+        print(f"❌ Error in handle_reset_progress: {e}")
