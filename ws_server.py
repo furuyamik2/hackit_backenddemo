@@ -22,7 +22,7 @@ db = firestore.client()
 # Socket.IOサーバーの初期化
 sio = socketio.AsyncServer(
     async_mode='asgi',
-    cors_allowed_origins=["*"]
+    cors_allowed_origins=["http://localhost:517"]
 )
 
 # FastAPIのインスタンス
