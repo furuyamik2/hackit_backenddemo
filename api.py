@@ -138,23 +138,28 @@ def join_room(request: JoinRoomRequest):
 
   
 @app.post("/update_room_settings")
-def update_room_settings(request: UpdateSettingsRequest):
+async def update_room_settings(request: UpdateSettingsRequest):
     try:
+        # 1. まず、AIにアジェンダを生成させる
+        agenda_request = GenerateAgendaRequest(topic=request.topic, total_duration=request.duration)
+        generated_agenda = await generate_agenda(agenda_request) # 内部でgenerate_agendaを呼び出す
+
+        # 2. Firestoreに議題、時間、ステータス、そして生成されたアジェンダを保存
         room_ref = db.collection('rooms').document(request.roomId)
-        
-        # データベースに議題、制限時間、そして「議論中」というステータスを保存
         room_ref.update({
             'topic': request.topic,
             'duration': request.duration,
-            'status': 'discussing'  # この行が重要！
+            'status': 'discussing',
+            'agenda': generated_agenda # 生成されたアジェンダを保存
         })
-        print(f"Room {request.roomId} status changed to 'discussing'")
-        return {"message": "Settings updated and discussion started"}
+        
+        print(f"Room {request.roomId} status changed to 'discussing' with new agenda.")
+        return {"message": "Settings and agenda updated successfully"}
     except Exception as e:
-        print(f"Error updating room settings: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update settings")
+        print(f"Error in update_room_settings: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update settings and generate agenda")
     
-@app.post("/generate_agenda")
+# @app.post("/generate_agenda")
 async def generate_agenda(request: GenerateAgendaRequest):
     """Gemini AIを使って、議題に基づいた議論の段取りを生成する"""
     if not db:
