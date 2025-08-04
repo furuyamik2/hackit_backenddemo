@@ -22,7 +22,7 @@ db = firestore.client()
 # Socket.IOサーバーの初期化
 sio = socketio.AsyncServer(
     async_mode='asgi',
-    cors_allowed_origins=["http://localhost:5173"]
+    cors_allowed_origins=["http://localhost:5173","https://hackit-black.vercel.app/"]
 )
 
 # FastAPIのインスタンス
