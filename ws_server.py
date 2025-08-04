@@ -170,7 +170,7 @@ async def handle_send_message(sid, data):
     
     # メッセージを、送信者(sid)以外の全員に送信する
     # skip_sid=sid が、この機能の核心です
-    await sio.emit('new_message', message, room=discussion_room_name, skip_sid=sid)
+    await sio.emit('new_message', message, room=discussion_room_name)
     print(f"💬 Sent message to room '{discussion_room_name}' (excluding sender)")
 
 @sio.on('finish_step')
